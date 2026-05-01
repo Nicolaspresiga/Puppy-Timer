@@ -10,52 +10,291 @@ import SwiftData
 
 struct ContentView: View {
     @Environment(\.modelContext) private var modelContext
-    @Query private var items: [Item]
+    @Query(sort: \PuppyEvent.timestamp, order: .reverse) private var events: [PuppyEvent]
 
     var body: some View {
-        NavigationSplitView {
-            List {
-                ForEach(items) { item in
-                    NavigationLink {
-                        Text("Item at \(item.timestamp, format: Date.FormatStyle(date: .numeric, time: .standard))")
+        NavigationStack {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 24) {
+                    header
+                    recommendationCard
+                    quickLogGrid
+                    todaySummary
+                    timeline
+                }
+                .padding(20)
+            }
+            .background(Color(.systemGroupedBackground))
+            .navigationTitle("Puppy Timer")
+        }
+    }
+
+    private var header: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Luna's day")
+                .font(.largeTitle.bold())
+
+            Text("Log what just happened. Puppy Timer will suggest what probably needs to happen next.")
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    private var recommendationCard: some View {
+        VStack(alignment: .leading, spacing: 18) {
+            Label("Next potty window", systemImage: "timer")
+                .font(.headline)
+                .foregroundStyle(.secondary)
+
+            VStack(alignment: .leading, spacing: 6) {
+                Text(nextPottyTitle)
+                    .font(.system(size: 34, weight: .bold, design: .rounded))
+
+                Text(nextPottyReason)
+                    .font(.body)
+                    .foregroundStyle(.secondary)
+            }
+
+            HStack(spacing: 14) {
+                lastEventTile(title: "Last pee", type: .pee)
+                lastEventTile(title: "Last poop", type: .poop)
+            }
+        }
+        .padding(20)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(.white)
+        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+    }
+
+    private var quickLogGrid: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Quick log")
+                .font(.title2.bold())
+
+            LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 12) {
+                ForEach(PuppyEventType.allCases) { type in
+                    Button {
+                        addEvent(type)
                     } label: {
-                        Text(item.timestamp, format: Date.FormatStyle(date: .numeric, time: .standard))
+                        HStack(spacing: 10) {
+                            Image(systemName: type.systemImage)
+                                .font(.headline)
+                                .frame(width: 26, height: 26)
+
+                            Text(type.title)
+                                .font(.headline)
+
+                            Spacer()
+                        }
+                        .padding(14)
+                        .frame(minHeight: 56)
+                        .foregroundStyle(.primary)
+                        .background(color(for: type).opacity(0.14))
+                        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
                     }
-                }
-                .onDelete(perform: deleteItems)
-            }
-            .toolbar {
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    EditButton()
-                }
-                ToolbarItem {
-                    Button(action: addItem) {
-                        Label("Add Item", systemImage: "plus")
-                    }
+                    .buttonStyle(.plain)
                 }
             }
-        } detail: {
-            Text("Select an item")
         }
     }
 
-    private func addItem() {
-        withAnimation {
-            let newItem = Item(timestamp: Date())
-            modelContext.insert(newItem)
+    private var todaySummary: some View {
+        HStack(spacing: 12) {
+            summaryTile(title: "Accidents", value: "\(countToday(.accident))")
+            summaryTile(title: "Meals", value: "\(countToday(.meal))")
+            summaryTile(title: "Potty logs", value: "\(countToday(.pee) + countToday(.poop))")
         }
     }
 
-    private func deleteItems(offsets: IndexSet) {
-        withAnimation {
-            for index in offsets {
-                modelContext.delete(items[index])
+    private var timeline: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Today")
+                .font(.title2.bold())
+
+            if todaysEvents.isEmpty {
+                ContentUnavailableView(
+                    "No logs yet",
+                    systemImage: "pawprint.fill",
+                    description: Text("Tap a quick log button to start today's puppy timeline.")
+                )
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 28)
+                .background(.white)
+                .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+            } else {
+                VStack(spacing: 0) {
+                    ForEach(todaysEvents) { event in
+                        HStack(spacing: 12) {
+                            Image(systemName: event.type.systemImage)
+                                .foregroundStyle(color(for: event.type))
+                                .frame(width: 28)
+
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(event.type.title)
+                                    .font(.headline)
+
+                                Text(event.timestamp, format: .dateTime.hour().minute())
+                                    .font(.subheadline)
+                                    .foregroundStyle(.secondary)
+                            }
+
+                            Spacer()
+                        }
+                        .padding(.vertical, 12)
+
+                        if event.id != todaysEvents.last?.id {
+                            Divider()
+                        }
+                    }
+                }
+                .padding(.horizontal, 16)
+                .background(.white)
+                .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
             }
+        }
+    }
+
+    private var todaysEvents: [PuppyEvent] {
+        events.filter { Calendar.current.isDateInToday($0.timestamp) }
+    }
+
+    private var nextPottyTitle: String {
+        guard let latest = events.first else {
+            return "Start with a log"
+        }
+
+        let target = suggestedPottyDate(after: latest)
+        if target <= Date() {
+            return "Take out now"
+        }
+
+        let minutes = max(1, Calendar.current.dateComponents([.minute], from: Date(), to: target).minute ?? 1)
+        return "In \(minutes) min"
+    }
+
+    private var nextPottyReason: String {
+        guard let latest = events.first else {
+            return "Log a wake-up, meal, water, play, pee, or poop to start the first potty timer."
+        }
+
+        switch latest.type {
+        case .wake:
+            return "Puppies usually need to go right after waking up."
+        case .meal:
+            return "Meal logged. A potty break is often useful soon after eating."
+        case .water:
+            return "Water logged. Watch for a potty window soon."
+        case .play:
+            return "Play can trigger a potty need, especially with young puppies."
+        case .accident:
+            return "Accident logged. The next reminder window is shortened."
+        case .pee, .poop:
+            return "Potty logged. The next check is based on a short awake interval."
+        case .nap:
+            return "Nap logged. The important timer starts when your puppy wakes."
+        }
+    }
+
+    private func addEvent(_ type: PuppyEventType) {
+        withAnimation {
+            modelContext.insert(PuppyEvent(type: type))
+        }
+    }
+
+    private func suggestedPottyDate(after event: PuppyEvent) -> Date {
+        let minutes: Int
+
+        switch event.type {
+        case .wake:
+            minutes = 5
+        case .meal:
+            minutes = 15
+        case .water:
+            minutes = 20
+        case .play:
+            minutes = 10
+        case .accident:
+            minutes = 20
+        case .pee, .poop:
+            minutes = 45
+        case .nap:
+            minutes = 90
+        }
+
+        return Calendar.current.date(byAdding: .minute, value: minutes, to: event.timestamp) ?? event.timestamp
+    }
+
+    private func lastEventTile(title: String, type: PuppyEventType) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(title)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+
+            if let event = events.first(where: { $0.type == type }) {
+                Text(relativeTime(since: event.timestamp))
+                    .font(.headline)
+            } else {
+                Text("Not yet")
+                    .font(.headline)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .padding(14)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color(.secondarySystemGroupedBackground))
+        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+    }
+
+    private func summaryTile(title: String, value: String) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(value)
+                .font(.title2.bold())
+
+            Text(title)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+        .padding(14)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(.white)
+        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+    }
+
+    private func countToday(_ type: PuppyEventType) -> Int {
+        todaysEvents.filter { $0.type == type }.count
+    }
+
+    private func relativeTime(since date: Date) -> String {
+        let minutes = max(0, Calendar.current.dateComponents([.minute], from: date, to: Date()).minute ?? 0)
+
+        if minutes < 1 {
+            return "Just now"
+        }
+
+        if minutes < 60 {
+            return "\(minutes)m ago"
+        }
+
+        return "\(minutes / 60)h \(minutes % 60)m ago"
+    }
+
+    private func color(for type: PuppyEventType) -> Color {
+        switch type.tintName {
+        case "cyan": .cyan
+        case "brown": .brown
+        case "red": .red
+        case "orange": .orange
+        case "blue": .blue
+        case "indigo": .indigo
+        case "yellow": .yellow
+        case "green": .green
+        default: .accentColor
         }
     }
 }
 
 #Preview {
     ContentView()
-        .modelContainer(for: Item.self, inMemory: true)
+        .modelContainer(for: PuppyEvent.self, inMemory: true)
 }
