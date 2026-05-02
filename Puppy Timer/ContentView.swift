@@ -11,9 +11,13 @@ import UserNotifications
 
 struct ContentView: View {
     @Environment(\.modelContext) private var modelContext
+    @AppStorage("hasSeenNotificationExplainer") private var hasSeenNotificationExplainer = false
     @Query private var profiles: [PuppyProfile]
     @Query(sort: \PuppyEvent.timestamp, order: .reverse) private var events: [PuppyEvent]
     @State private var animatedLogType: PuppyEventType?
+    @State private var pendingReminderEvent: PuppyEvent?
+    @State private var pendingReminderProfile: PuppyProfile?
+    @State private var showingNotificationExplainer = false
 
     var body: some View {
         NavigationStack {
@@ -41,6 +45,26 @@ struct ContentView: View {
             }
         }
         .tint(AppPalette.primaryGreen)
+        .sheet(isPresented: $showingNotificationExplainer) {
+            NotificationExplainerView(
+                title: "Turn on puppy reminders",
+                message: "Puppy Timer uses notifications for potty check-ins and meal times. You can change this later in iPhone Settings.",
+                primaryActionTitle: "Enable Reminders",
+                secondaryActionTitle: "Not Now"
+            ) {
+                hasSeenNotificationExplainer = true
+                if let event = pendingReminderEvent, let profile = pendingReminderProfile {
+                    schedulePottyReminder(after: event, profile: profile)
+                }
+                pendingReminderEvent = nil
+                pendingReminderProfile = nil
+                showingNotificationExplainer = false
+            } onCancel: {
+                pendingReminderEvent = nil
+                pendingReminderProfile = nil
+                showingNotificationExplainer = false
+            }
+        }
     }
 
     private func dashboard(for profile: PuppyProfile) -> some View {
@@ -386,7 +410,13 @@ struct ContentView: View {
             modelContext.insert(event)
         }
 
-        schedulePottyReminder(after: event, profile: profile)
+        if hasSeenNotificationExplainer {
+            schedulePottyReminder(after: event, profile: profile)
+        } else {
+            pendingReminderEvent = event
+            pendingReminderProfile = profile
+            showingNotificationExplainer = true
+        }
 
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.42) {
             withAnimation(.spring(response: 0.3, dampingFraction: 0.82)) {
@@ -854,6 +884,68 @@ struct EventEditView: View {
     }
 }
 
+struct NotificationExplainerView: View {
+    let title: String
+    let message: String
+    let primaryActionTitle: String
+    let secondaryActionTitle: String
+    let onEnable: () -> Void
+    let onCancel: () -> Void
+
+    var body: some View {
+        VStack(spacing: 24) {
+            Spacer()
+
+            ZStack {
+                Circle()
+                    .fill(AppPalette.softGreen)
+                    .frame(width: 96, height: 96)
+
+                Image(systemName: "bell.badge.fill")
+                    .font(.system(size: 42, weight: .bold))
+                    .foregroundStyle(AppPalette.primaryGreen)
+            }
+
+            VStack(spacing: 10) {
+                Text(title)
+                    .font(.largeTitle.bold())
+                    .foregroundStyle(AppPalette.primaryGreen)
+                    .multilineTextAlignment(.center)
+
+                Text(message)
+                    .font(.body)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            VStack(spacing: 12) {
+                Button(action: onEnable) {
+                    Label(primaryActionTitle, systemImage: "bell.fill")
+                        .font(.headline)
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 54)
+                }
+                .buttonStyle(PrimarySetupButtonStyle())
+
+                Button(action: onCancel) {
+                    Text(secondaryActionTitle)
+                        .font(.headline)
+                        .foregroundStyle(AppPalette.primaryGreen)
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 48)
+                }
+                .buttonStyle(.plain)
+            }
+
+            Spacer()
+        }
+        .padding(24)
+        .background(AppPalette.background)
+        .presentationDetents([.medium])
+    }
+}
+
 enum AppPalette {
     static let primaryGreen = Color(red: 8 / 255, green: 64 / 255, blue: 27 / 255)
     static let background = Color(red: 246 / 255, green: 249 / 255, blue: 244 / 255)
@@ -886,6 +978,7 @@ struct QuickLogButtonStyle: ButtonStyle {
 struct PuppyProfileForm: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(\.dismiss) private var dismiss
+    @AppStorage("hasSeenNotificationExplainer") private var hasSeenNotificationExplainer = false
     @FocusState private var focusedField: SetupField?
 
     let profile: PuppyProfile?
@@ -902,6 +995,8 @@ struct PuppyProfileForm: View {
     @State private var lunchTime: Date
     @State private var dinnerEnabled: Bool
     @State private var dinnerTime: Date
+    @State private var savedProfileWaitingForReminders: PuppyProfile?
+    @State private var showingNotificationExplainer = false
 
     init(profile: PuppyProfile?) {
         self.profile = profile
@@ -941,6 +1036,26 @@ struct PuppyProfileForm: View {
                 Button("Done") {
                     focusedField = nil
                 }
+            }
+        }
+        .sheet(isPresented: $showingNotificationExplainer) {
+            NotificationExplainerView(
+                title: "Turn on meal reminders",
+                message: "Puppy Timer can remind you when it is time to feed your puppy. Meal reminders repeat daily at the times you choose.",
+                primaryActionTitle: "Enable Meal Reminders",
+                secondaryActionTitle: "Not Now"
+            ) {
+                hasSeenNotificationExplainer = true
+                if let profile = savedProfileWaitingForReminders {
+                    scheduleMealReminders(for: profile)
+                }
+                savedProfileWaitingForReminders = nil
+                showingNotificationExplainer = false
+                dismiss()
+            } onCancel: {
+                savedProfileWaitingForReminders = nil
+                showingNotificationExplainer = false
+                dismiss()
             }
         }
     }
@@ -1273,8 +1388,13 @@ struct PuppyProfileForm: View {
             savedProfile = newProfile
         }
 
-        scheduleMealReminders(for: savedProfile)
-        dismiss()
+        if mealRemindersEnabled && !hasSeenNotificationExplainer {
+            savedProfileWaitingForReminders = savedProfile
+            showingNotificationExplainer = true
+        } else {
+            scheduleMealReminders(for: savedProfile)
+            dismiss()
+        }
     }
 
     private func scheduleMealReminders(for profile: PuppyProfile) {
@@ -1286,12 +1406,18 @@ struct PuppyProfileForm: View {
         ]
         let identifiers = mealReminders.map(\.identifier)
         let puppyName = profile.name
+        let enabledReminders = mealReminders.filter(\.enabled)
+
+        guard !enabledReminders.isEmpty else {
+            center.removePendingNotificationRequests(withIdentifiers: identifiers)
+            return
+        }
 
         center.requestAuthorization(options: [.alert, .sound, .badge]) { granted, _ in
             center.removePendingNotificationRequests(withIdentifiers: identifiers)
             guard granted else { return }
 
-            for reminder in mealReminders where reminder.enabled {
+            for reminder in enabledReminders {
                 let components = Calendar.current.dateComponents([.hour, .minute], from: reminder.time)
                 let content = UNMutableNotificationContent()
                 content.title = "Time to feed \(puppyName)"
