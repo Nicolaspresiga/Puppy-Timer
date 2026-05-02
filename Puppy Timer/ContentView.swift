@@ -30,6 +30,7 @@ struct ContentView: View {
                     .navigationTitle("Puppy Setup")
             }
         }
+        .tint(AppPalette.primaryGreen)
     }
 
     private func dashboard(for profile: PuppyProfile) -> some View {
@@ -45,7 +46,7 @@ struct ContentView: View {
             .padding(.top, 20)
             .padding(.bottom, 110)
         }
-        .background(Color(.systemGroupedBackground))
+        .background(AppPalette.background)
         .scrollIndicators(.visible)
     }
 
@@ -54,6 +55,7 @@ struct ContentView: View {
             VStack(alignment: .leading, spacing: 8) {
                 Text("\(profile.name)'s day")
                     .font(.largeTitle.bold())
+                    .foregroundStyle(AppPalette.primaryGreen)
 
                 Text(profileSummary(for: profile))
                     .font(.subheadline)
@@ -92,11 +94,12 @@ struct ContentView: View {
         VStack(alignment: .leading, spacing: 18) {
             Label("Next potty window", systemImage: "timer")
                 .font(.headline)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(AppPalette.primaryGreen.opacity(0.72))
 
             VStack(alignment: .leading, spacing: 6) {
                 Text(nextPottyTitle)
                     .font(.system(size: 34, weight: .bold, design: .rounded))
+                    .foregroundStyle(AppPalette.primaryGreen)
 
                 Text(nextPottyReason)
                     .font(.body)
@@ -110,7 +113,7 @@ struct ContentView: View {
         }
         .padding(20)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(.white)
+        .background(AppPalette.card)
         .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
     }
 
@@ -118,6 +121,7 @@ struct ContentView: View {
         VStack(alignment: .leading, spacing: 12) {
             Text("Quick log")
                 .font(.title2.bold())
+                .foregroundStyle(AppPalette.primaryGreen)
 
             LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 12) {
                 ForEach(PuppyEventType.allCases) { type in
@@ -136,9 +140,13 @@ struct ContentView: View {
                         }
                         .padding(14)
                         .frame(minHeight: 56)
-                        .foregroundStyle(.primary)
-                        .background(color(for: type).opacity(0.14))
+                        .foregroundStyle(AppPalette.primaryGreen)
+                        .background(buttonBackground(for: type))
                         .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                .stroke(AppPalette.primaryGreen.opacity(0.08), lineWidth: 1)
+                        )
                     }
                     .buttonStyle(QuickLogButtonStyle())
                 }
@@ -158,6 +166,7 @@ struct ContentView: View {
         VStack(alignment: .leading, spacing: 12) {
             Text("Today")
                 .font(.title2.bold())
+                .foregroundStyle(AppPalette.primaryGreen)
 
             if todaysEvents.isEmpty {
                 ContentUnavailableView(
@@ -167,14 +176,14 @@ struct ContentView: View {
                 )
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 28)
-                .background(.white)
+                .background(AppPalette.card)
                 .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
             } else {
                 VStack(spacing: 0) {
                     ForEach(todaysEvents) { event in
                         HStack(spacing: 12) {
                             Image(systemName: event.type.systemImage)
-                                .foregroundStyle(color(for: event.type))
+                                .foregroundStyle(AppPalette.primaryGreen)
                                 .frame(width: 28)
 
                             VStack(alignment: .leading, spacing: 2) {
@@ -196,7 +205,7 @@ struct ContentView: View {
                     }
                 }
                 .padding(.horizontal, 16)
-                .background(.white)
+                .background(AppPalette.card)
                 .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
             }
         }
@@ -289,7 +298,7 @@ struct ContentView: View {
         }
         .padding(14)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color(.secondarySystemGroupedBackground))
+        .background(AppPalette.softGreen)
         .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
     }
 
@@ -304,7 +313,7 @@ struct ContentView: View {
         }
         .padding(14)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(.white)
+        .background(AppPalette.card)
         .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
     }
 
@@ -326,19 +335,41 @@ struct ContentView: View {
         return "\(minutes / 60)h \(minutes % 60)m ago"
     }
 
-    private func color(for type: PuppyEventType) -> Color {
-        switch type.tintName {
-        case "cyan": .cyan
-        case "brown": .brown
-        case "red": .red
-        case "orange": .orange
-        case "blue": .blue
-        case "indigo": .indigo
-        case "yellow": .yellow
-        case "green": .green
-        default: .accentColor
+    private func buttonBackground(for type: PuppyEventType) -> Color {
+        switch type {
+        case .pee:
+            AppPalette.mint
+        case .poop:
+            AppPalette.sage
+        case .accident:
+            AppPalette.warning
+        case .meal:
+            AppPalette.warm
+        case .water:
+            AppPalette.lightGreen
+        case .nap:
+            AppPalette.calm
+        case .wake:
+            AppPalette.sunlit
+        case .play:
+            AppPalette.fresh
         }
     }
+}
+
+enum AppPalette {
+    static let primaryGreen = Color(red: 8 / 255, green: 64 / 255, blue: 27 / 255)
+    static let background = Color(red: 246 / 255, green: 249 / 255, blue: 244 / 255)
+    static let card = Color.white
+    static let softGreen = Color(red: 232 / 255, green: 241 / 255, blue: 230 / 255)
+    static let mint = Color(red: 218 / 255, green: 239 / 255, blue: 226 / 255)
+    static let sage = Color(red: 226 / 255, green: 236 / 255, blue: 218 / 255)
+    static let warning = Color(red: 243 / 255, green: 226 / 255, blue: 218 / 255)
+    static let warm = Color(red: 242 / 255, green: 235 / 255, blue: 218 / 255)
+    static let lightGreen = Color(red: 224 / 255, green: 241 / 255, blue: 229 / 255)
+    static let calm = Color(red: 226 / 255, green: 234 / 255, blue: 222 / 255)
+    static let sunlit = Color(red: 240 / 255, green: 238 / 255, blue: 213 / 255)
+    static let fresh = Color(red: 213 / 255, green: 235 / 255, blue: 218 / 255)
 }
 
 struct QuickLogButtonStyle: ButtonStyle {
@@ -399,7 +430,8 @@ struct PuppyProfileForm: View {
             }
         }
         .scrollContentBackground(.hidden)
-        .background(Color(.systemGroupedBackground))
+        .background(AppPalette.background)
+        .tint(AppPalette.primaryGreen)
     }
 
     private var ageLabel: String {
