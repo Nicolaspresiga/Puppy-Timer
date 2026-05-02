@@ -566,6 +566,7 @@ struct ContentView: View {
 }
 
 struct HistoryView: View {
+    @Environment(\.modelContext) private var modelContext
     @Query(sort: \PuppyEvent.timestamp, order: .reverse) private var events: [PuppyEvent]
 
     var body: some View {
@@ -634,7 +635,19 @@ struct HistoryView: View {
 
             VStack(spacing: 0) {
                 ForEach(events) { event in
-                    historyRow(for: event)
+                    NavigationLink {
+                        EventEditView(event: event)
+                    } label: {
+                        historyRow(for: event)
+                    }
+                    .buttonStyle(.plain)
+                    .swipeActions(edge: .trailing) {
+                        Button(role: .destructive) {
+                            modelContext.delete(event)
+                        } label: {
+                            Label("Delete", systemImage: "trash")
+                        }
+                    }
 
                     if event.id != events.last?.id {
                         Divider()
@@ -686,6 +699,158 @@ struct HistoryView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(AppPalette.card)
         .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+    }
+}
+
+struct EventEditView: View {
+    @Environment(\.modelContext) private var modelContext
+    @Environment(\.dismiss) private var dismiss
+
+    let event: PuppyEvent
+
+    @State private var selectedType: PuppyEventType
+    @State private var timestamp: Date
+    @State private var showingDeleteConfirmation = false
+
+    init(event: PuppyEvent) {
+        self.event = event
+        _selectedType = State(initialValue: event.type)
+        _timestamp = State(initialValue: event.timestamp)
+    }
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 22) {
+                previewCard
+                eventTypeSection
+                timeSection
+                deleteButton
+            }
+            .padding(.horizontal, 20)
+            .padding(.top, 20)
+            .padding(.bottom, 80)
+        }
+        .background(AppPalette.background)
+        .navigationTitle("Edit Log")
+        .navigationBarTitleDisplayMode(.large)
+        .toolbar {
+            ToolbarItem(placement: .confirmationAction) {
+                Button("Save") {
+                    saveChanges()
+                }
+                .fontWeight(.semibold)
+            }
+        }
+        .confirmationDialog("Delete this log?", isPresented: $showingDeleteConfirmation, titleVisibility: .visible) {
+            Button("Delete Log", role: .destructive) {
+                deleteEvent()
+            }
+
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("This cannot be undone.")
+        }
+    }
+
+    private var previewCard: some View {
+        HStack(spacing: 14) {
+            Image(systemName: selectedType.systemImage)
+                .font(.system(size: 30, weight: .bold))
+                .foregroundStyle(AppPalette.primaryGreen)
+                .frame(width: 58, height: 58)
+                .background(AppPalette.softGreen)
+                .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text(selectedType.title)
+                    .font(.title2.bold())
+                    .foregroundStyle(AppPalette.primaryGreen)
+
+                Text(timestamp, format: .dateTime.weekday(.abbreviated).month(.abbreviated).day().hour().minute())
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+            }
+
+            Spacer()
+        }
+        .padding(18)
+        .background(AppPalette.card)
+        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+    }
+
+    private var eventTypeSection: some View {
+        editSection(title: "Event type", systemImage: "square.grid.2x2.fill") {
+            LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 10) {
+                ForEach(PuppyEventType.allCases) { type in
+                    Button {
+                        withAnimation(.spring(response: 0.25, dampingFraction: 0.75)) {
+                            selectedType = type
+                        }
+                    } label: {
+                        HStack(spacing: 10) {
+                            Image(systemName: type.systemImage)
+                                .frame(width: 24)
+
+                            Text(type.title)
+                                .font(.subheadline.weight(.semibold))
+
+                            Spacer()
+                        }
+                        .padding(12)
+                        .frame(minHeight: 48)
+                        .foregroundStyle(selectedType == type ? .white : AppPalette.primaryGreen)
+                        .background(selectedType == type ? AppPalette.primaryGreen : AppPalette.softGreen)
+                        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                    }
+                    .buttonStyle(QuickLogButtonStyle())
+                }
+            }
+        }
+    }
+
+    private var timeSection: some View {
+        editSection(title: "Time", systemImage: "calendar.badge.clock") {
+            DatePicker("Logged at", selection: $timestamp, displayedComponents: [.date, .hourAndMinute])
+                .datePickerStyle(.graphical)
+                .tint(AppPalette.primaryGreen)
+        }
+    }
+
+    private var deleteButton: some View {
+        Button(role: .destructive) {
+            showingDeleteConfirmation = true
+        } label: {
+            Label("Delete Log", systemImage: "trash")
+                .font(.headline)
+                .frame(maxWidth: .infinity)
+                .frame(height: 52)
+        }
+        .buttonStyle(.borderedProminent)
+        .tint(.red)
+    }
+
+    private func editSection<Content: View>(title: String, systemImage: String, @ViewBuilder content: () -> Content) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Label(title, systemImage: systemImage)
+                .font(.headline)
+                .foregroundStyle(AppPalette.primaryGreen)
+
+            content()
+        }
+        .padding(16)
+        .background(AppPalette.card)
+        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+    }
+
+    private func saveChanges() {
+        event.typeRawValue = selectedType.rawValue
+        event.timestamp = timestamp
+        dismiss()
+    }
+
+    private func deleteEvent() {
+        modelContext.delete(event)
+        dismiss()
     }
 }
 
