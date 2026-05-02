@@ -415,6 +415,8 @@ struct PuppyProfileForm: View {
     @Environment(\.dismiss) private var dismiss
 
     let profile: PuppyProfile?
+    private let colorOptions = ["Black", "Brown", "Gray", "Cream", "White", "Golden"]
+    private let breedSuggestions = ["French Bulldog", "Golden Retriever", "Labrador", "German Shepherd", "Poodle", "Mixed"]
 
     @State private var name: String
     @State private var ageInMonths: Int
@@ -430,40 +432,223 @@ struct PuppyProfileForm: View {
     }
 
     var body: some View {
-        Form {
-            Section {
-                TextField("Name", text: $name)
-                    .textContentType(.name)
-
-                Stepper(value: $ageInMonths, in: 1...24) {
-                    Text(ageLabel)
-                }
-
-                TextField("Color", text: $color)
-                TextField("Breed", text: $breed)
-            } header: {
-                Text("Puppy")
+        ScrollView {
+            VStack(alignment: .leading, spacing: 22) {
+                profilePreview
+                nameSection
+                ageSection
+                colorSection
+                breedSection
+                saveButton
             }
-
-            Section {
-                Button(action: saveProfile) {
-                    Label(profile == nil ? "Start Puppy Timer" : "Save Changes", systemImage: "checkmark.circle.fill")
-                        .frame(maxWidth: .infinity)
-                }
-                .disabled(trimmedName.isEmpty)
-            }
+            .padding(.horizontal, 20)
+            .padding(.top, 20)
+            .padding(.bottom, 80)
         }
-        .scrollContentBackground(.hidden)
         .background(AppPalette.background)
         .tint(AppPalette.primaryGreen)
     }
 
-    private var ageLabel: String {
-        if ageInMonths == 1 {
-            return "Age: 1 month"
-        }
+    private var profilePreview: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            HStack(spacing: 16) {
+                ZStack {
+                    Circle()
+                        .fill(selectedColor.opacity(0.25))
+                        .frame(width: 76, height: 76)
 
-        return "Age: \(ageInMonths) months"
+                    Image(systemName: "pawprint.fill")
+                        .font(.system(size: 34, weight: .bold))
+                        .foregroundStyle(AppPalette.primaryGreen)
+                }
+
+                VStack(alignment: .leading, spacing: 6) {
+                    Text(trimmedName.isEmpty ? "Your puppy" : trimmedName)
+                        .font(.title.bold())
+                        .foregroundStyle(AppPalette.primaryGreen)
+
+                    Text(previewDetails)
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+
+                Spacer()
+            }
+
+            ProgressView(value: setupProgress)
+                .tint(AppPalette.primaryGreen)
+        }
+        .padding(20)
+        .background(AppPalette.card)
+        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+    }
+
+    private var nameSection: some View {
+        setupSection(title: "Name", systemImage: "pencil") {
+            TextField("Ares", text: $name)
+                .textContentType(.name)
+                .font(.title3.weight(.semibold))
+                .padding(14)
+                .background(AppPalette.softGreen)
+                .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+        }
+    }
+
+    private var ageSection: some View {
+        setupSection(title: "Age", systemImage: "calendar") {
+            HStack(spacing: 14) {
+                Button {
+                    updateAge(by: -1)
+                } label: {
+                    Image(systemName: "minus")
+                        .frame(width: 44, height: 44)
+                }
+                .buttonStyle(SetupIconButtonStyle())
+                .disabled(ageInMonths <= 1)
+
+                VStack(spacing: 4) {
+                    Text("\(ageInMonths)")
+                        .font(.system(size: 40, weight: .bold, design: .rounded))
+                        .foregroundStyle(AppPalette.primaryGreen)
+
+                    Text(ageInMonths == 1 ? "month old" : "months old")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 10)
+                .background(AppPalette.softGreen)
+                .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+
+                Button {
+                    updateAge(by: 1)
+                } label: {
+                    Image(systemName: "plus")
+                        .frame(width: 44, height: 44)
+                }
+                .buttonStyle(SetupIconButtonStyle())
+                .disabled(ageInMonths >= 24)
+            }
+        }
+    }
+
+    private var colorSection: some View {
+        setupSection(title: "Color", systemImage: "paintpalette.fill") {
+            LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible()), GridItem(.flexible())], spacing: 10) {
+                ForEach(colorOptions, id: \.self) { option in
+                    Button {
+                        withAnimation(.spring(response: 0.28, dampingFraction: 0.74)) {
+                            color = option
+                        }
+                    } label: {
+                        colorOptionLabel(option)
+                    }
+                    .buttonStyle(QuickLogButtonStyle())
+                }
+            }
+        }
+    }
+
+    private var breedSection: some View {
+        setupSection(title: "Breed", systemImage: "tag.fill") {
+            VStack(alignment: .leading, spacing: 12) {
+                TextField("French Bulldog", text: $breed)
+                    .font(.title3.weight(.semibold))
+                    .padding(14)
+                    .background(AppPalette.softGreen)
+                    .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 8) {
+                        ForEach(breedSuggestions, id: \.self) { suggestion in
+                            Button {
+                                withAnimation(.spring(response: 0.28, dampingFraction: 0.74)) {
+                                    breed = suggestion
+                                }
+                            } label: {
+                                Text(suggestion)
+                                    .font(.subheadline.weight(.semibold))
+                                    .padding(.horizontal, 12)
+                                    .frame(height: 36)
+                                    .foregroundStyle(selectedBreed(suggestion) ? .white : AppPalette.primaryGreen)
+                                    .background(selectedBreed(suggestion) ? AppPalette.primaryGreen : AppPalette.softGreen)
+                                    .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                            }
+                            .buttonStyle(QuickLogButtonStyle())
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private var saveButton: some View {
+        Button(action: saveProfile) {
+            Label(profile == nil ? "Start Puppy Timer" : "Save Changes", systemImage: "checkmark.circle.fill")
+                .font(.headline)
+                .frame(maxWidth: .infinity)
+                .frame(height: 54)
+        }
+        .buttonStyle(PrimarySetupButtonStyle())
+        .disabled(trimmedName.isEmpty)
+        .opacity(trimmedName.isEmpty ? 0.45 : 1)
+    }
+
+    private func setupSection<Content: View>(title: String, systemImage: String, @ViewBuilder content: () -> Content) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Label(title, systemImage: systemImage)
+                .font(.headline)
+                .foregroundStyle(AppPalette.primaryGreen)
+
+            content()
+        }
+        .padding(16)
+        .background(AppPalette.card)
+        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+    }
+
+    private func colorOptionLabel(_ option: String) -> some View {
+        let isSelected = selectedColorName(option)
+
+        return HStack(spacing: 8) {
+            Circle()
+                .fill(colorSwatch(for: option))
+                .frame(width: 16, height: 16)
+                .overlay(
+                    Circle()
+                        .stroke(AppPalette.primaryGreen.opacity(0.25), lineWidth: 1)
+                )
+
+            Text(option)
+                .font(.subheadline.weight(.semibold))
+                .lineLimit(1)
+                .minimumScaleFactor(0.78)
+        }
+        .padding(.horizontal, 10)
+        .frame(maxWidth: .infinity)
+        .frame(height: 44)
+        .foregroundStyle(isSelected ? .white : AppPalette.primaryGreen)
+        .background(isSelected ? AppPalette.primaryGreen : AppPalette.softGreen)
+        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+    }
+
+    private var previewDetails: String {
+        let displayColor = trimmedColor.isEmpty ? "Color" : trimmedColor
+        let displayBreed = trimmedBreed.isEmpty ? "Breed" : trimmedBreed
+        return "\(ageInMonths) \(ageInMonths == 1 ? "month" : "months") old - \(displayColor) - \(displayBreed)"
+    }
+
+    private var setupProgress: Double {
+        var completed = 0
+        completed += trimmedName.isEmpty ? 0 : 1
+        completed += trimmedColor.isEmpty ? 0 : 1
+        completed += trimmedBreed.isEmpty ? 0 : 1
+        return Double(completed) / 3
+    }
+
+    private var selectedColor: Color {
+        colorSwatch(for: trimmedColor)
     }
 
     private var trimmedName: String {
@@ -478,6 +663,39 @@ struct PuppyProfileForm: View {
         breed.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
+    private func selectedColorName(_ option: String) -> Bool {
+        trimmedColor.localizedCaseInsensitiveCompare(option) == .orderedSame
+    }
+
+    private func selectedBreed(_ suggestion: String) -> Bool {
+        trimmedBreed.localizedCaseInsensitiveCompare(suggestion) == .orderedSame
+    }
+
+    private func updateAge(by value: Int) {
+        withAnimation(.spring(response: 0.24, dampingFraction: 0.72)) {
+            ageInMonths = min(24, max(1, ageInMonths + value))
+        }
+    }
+
+    private func colorSwatch(for name: String) -> Color {
+        switch name.lowercased() {
+        case "black":
+            return Color(red: 32 / 255, green: 34 / 255, blue: 31 / 255)
+        case "brown":
+            return Color(red: 126 / 255, green: 78 / 255, blue: 44 / 255)
+        case "gray", "grey":
+            return Color(red: 143 / 255, green: 148 / 255, blue: 143 / 255)
+        case "cream":
+            return Color(red: 232 / 255, green: 218 / 255, blue: 185 / 255)
+        case "white":
+            return Color(red: 245 / 255, green: 245 / 255, blue: 238 / 255)
+        case "golden":
+            return Color(red: 205 / 255, green: 151 / 255, blue: 62 / 255)
+        default:
+            return AppPalette.softGreen
+        }
+    }
+
     private func saveProfile() {
         if let profile {
             profile.name = trimmedName
@@ -489,6 +707,31 @@ struct PuppyProfileForm: View {
         }
 
         dismiss()
+    }
+}
+
+struct SetupIconButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .font(.headline)
+            .foregroundStyle(.white)
+            .background(AppPalette.primaryGreen)
+            .clipShape(Circle())
+            .scaleEffect(configuration.isPressed ? 0.9 : 1)
+            .opacity(configuration.isPressed ? 0.8 : 1)
+            .animation(.spring(response: 0.2, dampingFraction: 0.75), value: configuration.isPressed)
+    }
+}
+
+struct PrimarySetupButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .foregroundStyle(.white)
+            .background(AppPalette.primaryGreen)
+            .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+            .scaleEffect(configuration.isPressed ? 0.97 : 1)
+            .opacity(configuration.isPressed ? 0.86 : 1)
+            .animation(.spring(response: 0.22, dampingFraction: 0.72), value: configuration.isPressed)
     }
 }
 
