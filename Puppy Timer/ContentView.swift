@@ -7,6 +7,7 @@
 
 import SwiftUI
 import SwiftData
+import UserNotifications
 
 struct ContentView: View {
     @Environment(\.modelContext) private var modelContext
@@ -39,7 +40,7 @@ struct ContentView: View {
             VStack(alignment: .leading, spacing: 24) {
                 header(for: profile)
                 recommendationCard(for: profile)
-                quickLogGrid
+                quickLogGrid(for: profile)
                 todaySummary
                 timeline
             }
@@ -52,23 +53,58 @@ struct ContentView: View {
     }
 
     private func header(for profile: PuppyProfile) -> some View {
-        VStack(alignment: .leading, spacing: 12) {
-            VStack(alignment: .leading, spacing: 8) {
-                Text("\(profile.name)'s day")
-                    .font(.largeTitle.bold())
-                    .foregroundStyle(AppPalette.primaryGreen)
+        VStack(alignment: .leading, spacing: 16) {
+            HStack(alignment: .center, spacing: 14) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                        .fill(AppPalette.primaryGreen)
+                        .frame(width: 64, height: 64)
 
-                Text(profileSummary(for: profile))
-                    .font(.subheadline)
+                    Image(systemName: "pawprint.fill")
+                        .font(.system(size: 30, weight: .bold))
+                        .foregroundStyle(.white)
+                }
+
+                VStack(alignment: .leading, spacing: 5) {
+                    Text("\(profile.name)'s day")
+                        .font(.system(size: 30, weight: .bold, design: .rounded))
+                        .foregroundStyle(AppPalette.primaryGreen)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.75)
+
+                    Text(profileSummary(for: profile))
+                        .font(.subheadline.weight(.medium))
+                        .foregroundStyle(.secondary)
+                        .lineLimit(2)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+
+                Spacer(minLength: 0)
+            }
+
+            HStack(spacing: 10) {
+                Label(ageWindowTitle(for: profile), systemImage: "clock.fill")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(AppPalette.primaryGreen)
+                    .padding(.horizontal, 10)
+                    .frame(height: 30)
+                    .background(AppPalette.softGreen)
+                    .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+
+                Text("Log each event to keep the next potty window accurate.")
+                    .font(.footnote)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
-
-            Text("Log what just happened. Puppy Timer will suggest what probably needs to happen next.")
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
         }
+        .padding(18)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(AppPalette.card)
+        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .stroke(AppPalette.primaryGreen.opacity(0.08), lineWidth: 1)
+        )
     }
 
     private func profileSummary(for profile: PuppyProfile) -> String {
@@ -89,6 +125,18 @@ struct ContentView: View {
         }
 
         return details.joined(separator: " - ")
+    }
+
+    private func ageWindowTitle(for profile: PuppyProfile) -> String {
+        if profile.ageInMonths <= 2 {
+            return "Short window"
+        }
+
+        if profile.ageInMonths <= 4 {
+            return "Medium window"
+        }
+
+        return "Longer window"
     }
 
     private func recommendationCard(for profile: PuppyProfile) -> some View {
@@ -118,7 +166,7 @@ struct ContentView: View {
         .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
     }
 
-    private var quickLogGrid: some View {
+    private func quickLogGrid(for profile: PuppyProfile) -> some View {
         VStack(alignment: .leading, spacing: 12) {
             Text("Quick log")
                 .font(.title2.bold())
@@ -127,7 +175,7 @@ struct ContentView: View {
             LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 12) {
                 ForEach(PuppyEventType.allCases) { type in
                     Button {
-                        addEvent(type)
+                        addEvent(type, profile: profile)
                     } label: {
                         quickLogButtonLabel(for: type)
                     }
@@ -269,11 +317,15 @@ struct ContentView: View {
         }
     }
 
-    private func addEvent(_ type: PuppyEventType) {
+    private func addEvent(_ type: PuppyEventType, profile: PuppyProfile) {
+        let event = PuppyEvent(type: type)
+
         withAnimation(.spring(response: 0.35, dampingFraction: 0.78)) {
             animatedLogType = type
-            modelContext.insert(PuppyEvent(type: type))
+            modelContext.insert(event)
         }
+
+        schedulePottyReminder(after: event, profile: profile)
 
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.42) {
             withAnimation(.spring(response: 0.3, dampingFraction: 0.82)) {
@@ -305,6 +357,51 @@ struct ContentView: View {
         }
 
         return Calendar.current.date(byAdding: .minute, value: minutes, to: event.timestamp) ?? event.timestamp
+    }
+
+    private func schedulePottyReminder(after event: PuppyEvent, profile: PuppyProfile) {
+        let reminderDate = suggestedPottyDate(after: event, profile: profile)
+        let seconds = reminderDate.timeIntervalSinceNow
+        let notificationTitle = "\(profile.name) may need a potty break"
+        let notificationMessage = notificationBody(for: event, puppyName: profile.name)
+
+        guard seconds > 1 else { return }
+
+        let center = UNUserNotificationCenter.current()
+        center.requestAuthorization(options: [.alert, .sound, .badge]) { granted, _ in
+            guard granted else { return }
+
+            center.removePendingNotificationRequests(withIdentifiers: ["next-potty-reminder"])
+
+            let content = UNMutableNotificationContent()
+            content.title = notificationTitle
+            content.body = notificationMessage
+            content.sound = .default
+
+            let trigger = UNTimeIntervalNotificationTrigger(timeInterval: max(60, seconds), repeats: false)
+            let request = UNNotificationRequest(identifier: "next-potty-reminder", content: content, trigger: trigger)
+
+            center.add(request)
+        }
+    }
+
+    private func notificationBody(for event: PuppyEvent, puppyName: String) -> String {
+        switch event.type {
+        case .wake:
+            return "Wake-up logged. Take \(puppyName) out soon."
+        case .meal:
+            return "Meal logged. It is time to check for a potty break."
+        case .water:
+            return "Water logged. Watch for \(puppyName)'s next potty window."
+        case .play:
+            return "Play logged. A potty break may help prevent accidents."
+        case .accident:
+            return "Accident logged. Try a shorter potty window this time."
+        case .pee, .poop:
+            return "Potty logged. This is the next age-based check-in."
+        case .nap:
+            return "Nap logged. Check in when \(puppyName) is likely to wake."
+        }
     }
 
     private func ageAdjustedMinutes(for profile: PuppyProfile, young: Int, middle: Int, older: Int) -> Int {
