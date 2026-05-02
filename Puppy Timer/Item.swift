@@ -14,6 +14,12 @@ final class PuppyProfile {
     var ageInMonths: Int
     var color: String
     var breed: String
+    var breakfastEnabled: Bool = true
+    var breakfastTime: Date = Calendar.current.date(from: DateComponents(hour: 7, minute: 30)) ?? Date()
+    var lunchEnabled: Bool = false
+    var lunchTime: Date = Calendar.current.date(from: DateComponents(hour: 12, minute: 30)) ?? Date()
+    var dinnerEnabled: Bool = true
+    var dinnerTime: Date = Calendar.current.date(from: DateComponents(hour: 18, minute: 0)) ?? Date()
 
     init(name: String, ageInMonths: Int, color: String, breed: String) {
         self.name = name

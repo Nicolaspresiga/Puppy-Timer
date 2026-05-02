@@ -47,6 +47,7 @@ struct ContentView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 24) {
                 header(for: profile)
+                nextMealCard(for: profile)
                 recommendationCard(for: profile)
                 quickLogGrid(for: profile)
                 todaySummary
@@ -115,6 +116,35 @@ struct ContentView: View {
         )
     }
 
+    private func nextMealCard(for profile: PuppyProfile) -> some View {
+        HStack(spacing: 14) {
+            Image(systemName: "fork.knife.circle.fill")
+                .font(.system(size: 34))
+                .foregroundStyle(AppPalette.primaryGreen)
+
+            VStack(alignment: .leading, spacing: 3) {
+                Text("Next meal")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+
+                if let meal = nextMeal(for: profile) {
+                    Text("\(meal.title) at \(meal.time, format: .dateTime.hour().minute())")
+                        .font(.headline)
+                        .foregroundStyle(AppPalette.primaryGreen)
+                } else {
+                    Text("No meal reminders set")
+                        .font(.headline)
+                        .foregroundStyle(AppPalette.primaryGreen)
+                }
+            }
+
+            Spacer()
+        }
+        .padding(16)
+        .background(AppPalette.card)
+        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+    }
+
     private func profileSummary(for profile: PuppyProfile) -> String {
         var details: [String] = []
 
@@ -145,6 +175,29 @@ struct ContentView: View {
         }
 
         return "Longer window"
+    }
+
+    private func nextMeal(for profile: PuppyProfile) -> MealSchedule? {
+        let meals = [
+            MealSchedule(title: "Breakfast", enabled: profile.breakfastEnabled, time: profile.breakfastTime),
+            MealSchedule(title: "Lunch", enabled: profile.lunchEnabled, time: profile.lunchTime),
+            MealSchedule(title: "Dinner", enabled: profile.dinnerEnabled, time: profile.dinnerTime)
+        ].filter(\.enabled)
+
+        let calendar = Calendar.current
+        let now = Date()
+
+        return meals
+            .compactMap { meal -> MealSchedule? in
+                let components = calendar.dateComponents([.hour, .minute], from: meal.time)
+                guard let today = calendar.date(bySettingHour: components.hour ?? 0, minute: components.minute ?? 0, second: 0, of: now) else {
+                    return nil
+                }
+
+                let nextDate = today >= now ? today : calendar.date(byAdding: .day, value: 1, to: today) ?? today
+                return MealSchedule(title: meal.title, enabled: meal.enabled, time: nextDate)
+            }
+            .min { $0.time < $1.time }
     }
 
     private func recommendationCard(for profile: PuppyProfile) -> some View {
@@ -678,6 +731,12 @@ struct PuppyProfileForm: View {
     @State private var ageInMonths: Int
     @State private var color: String
     @State private var breed: String
+    @State private var breakfastEnabled: Bool
+    @State private var breakfastTime: Date
+    @State private var lunchEnabled: Bool
+    @State private var lunchTime: Date
+    @State private var dinnerEnabled: Bool
+    @State private var dinnerTime: Date
 
     init(profile: PuppyProfile?) {
         self.profile = profile
@@ -685,6 +744,12 @@ struct PuppyProfileForm: View {
         _ageInMonths = State(initialValue: profile?.ageInMonths ?? 2)
         _color = State(initialValue: profile?.color ?? "")
         _breed = State(initialValue: profile?.breed ?? "")
+        _breakfastEnabled = State(initialValue: profile?.breakfastEnabled ?? true)
+        _breakfastTime = State(initialValue: profile?.breakfastTime ?? Self.defaultMealTime(hour: 7, minute: 30))
+        _lunchEnabled = State(initialValue: profile?.lunchEnabled ?? false)
+        _lunchTime = State(initialValue: profile?.lunchTime ?? Self.defaultMealTime(hour: 12, minute: 30))
+        _dinnerEnabled = State(initialValue: profile?.dinnerEnabled ?? true)
+        _dinnerTime = State(initialValue: profile?.dinnerTime ?? Self.defaultMealTime(hour: 18, minute: 0))
     }
 
     var body: some View {
@@ -695,6 +760,7 @@ struct PuppyProfileForm: View {
                 ageSection
                 colorSection
                 breedSection
+                mealReminderSection
                 saveButton
             }
             .padding(.horizontal, 20)
@@ -840,6 +906,39 @@ struct PuppyProfileForm: View {
         }
     }
 
+    private var mealReminderSection: some View {
+        setupSection(title: "Meal reminders", systemImage: "bell.badge.fill") {
+            VStack(spacing: 12) {
+                mealTimeRow(title: "Breakfast", isEnabled: $breakfastEnabled, time: $breakfastTime)
+                Divider()
+                mealTimeRow(title: "Lunch", isEnabled: $lunchEnabled, time: $lunchTime)
+                Divider()
+                mealTimeRow(title: "Dinner", isEnabled: $dinnerEnabled, time: $dinnerTime)
+            }
+        }
+    }
+
+    private func mealTimeRow(title: String, isEnabled: Binding<Bool>, time: Binding<Date>) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Toggle(isOn: isEnabled.animation(.spring(response: 0.24, dampingFraction: 0.78))) {
+                Label(title, systemImage: "fork.knife")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(AppPalette.primaryGreen)
+            }
+
+            if isEnabled.wrappedValue {
+                DatePicker("Time", selection: time, displayedComponents: .hourAndMinute)
+                    .datePickerStyle(.compact)
+                    .labelsHidden()
+                    .tint(AppPalette.primaryGreen)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+        }
+        .padding(12)
+        .background(isEnabled.wrappedValue ? AppPalette.softGreen : AppPalette.background)
+        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+    }
+
     private var saveButton: some View {
         Button(action: saveProfile) {
             Label(profile == nil ? "Start Puppy Timer" : "Save Changes", systemImage: "checkmark.circle.fill")
@@ -925,7 +1024,8 @@ struct PuppyProfileForm: View {
         completed += trimmedName.isEmpty ? 0 : 1
         completed += trimmedColor.isEmpty ? 0 : 1
         completed += trimmedBreed.isEmpty ? 0 : 1
-        return Double(completed) / 3
+        completed += mealRemindersEnabled ? 1 : 0
+        return Double(completed) / 4
     }
 
     private var selectedColor: Color {
@@ -942,6 +1042,10 @@ struct PuppyProfileForm: View {
 
     private var trimmedBreed: String {
         breed.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private var mealRemindersEnabled: Bool {
+        breakfastEnabled || lunchEnabled || dinnerEnabled
     }
 
     private func selectedColorName(_ option: String) -> Bool {
@@ -978,17 +1082,80 @@ struct PuppyProfileForm: View {
     }
 
     private func saveProfile() {
+        let savedProfile: PuppyProfile
+
         if let profile {
             profile.name = trimmedName
             profile.ageInMonths = ageInMonths
             profile.color = trimmedColor
             profile.breed = trimmedBreed
+            profile.breakfastEnabled = breakfastEnabled
+            profile.breakfastTime = breakfastTime
+            profile.lunchEnabled = lunchEnabled
+            profile.lunchTime = lunchTime
+            profile.dinnerEnabled = dinnerEnabled
+            profile.dinnerTime = dinnerTime
+            savedProfile = profile
         } else {
-            modelContext.insert(PuppyProfile(name: trimmedName, ageInMonths: ageInMonths, color: trimmedColor, breed: trimmedBreed))
+            let newProfile = PuppyProfile(name: trimmedName, ageInMonths: ageInMonths, color: trimmedColor, breed: trimmedBreed)
+            newProfile.breakfastEnabled = breakfastEnabled
+            newProfile.breakfastTime = breakfastTime
+            newProfile.lunchEnabled = lunchEnabled
+            newProfile.lunchTime = lunchTime
+            newProfile.dinnerEnabled = dinnerEnabled
+            newProfile.dinnerTime = dinnerTime
+            modelContext.insert(newProfile)
+            savedProfile = newProfile
         }
 
+        scheduleMealReminders(for: savedProfile)
         dismiss()
     }
+
+    private func scheduleMealReminders(for profile: PuppyProfile) {
+        let center = UNUserNotificationCenter.current()
+        let mealReminders = [
+            MealReminder(title: "Breakfast", enabled: profile.breakfastEnabled, time: profile.breakfastTime, identifier: "meal-reminder-breakfast"),
+            MealReminder(title: "Lunch", enabled: profile.lunchEnabled, time: profile.lunchTime, identifier: "meal-reminder-lunch"),
+            MealReminder(title: "Dinner", enabled: profile.dinnerEnabled, time: profile.dinnerTime, identifier: "meal-reminder-dinner")
+        ]
+        let identifiers = mealReminders.map(\.identifier)
+        let puppyName = profile.name
+
+        center.requestAuthorization(options: [.alert, .sound, .badge]) { granted, _ in
+            center.removePendingNotificationRequests(withIdentifiers: identifiers)
+            guard granted else { return }
+
+            for reminder in mealReminders where reminder.enabled {
+                let components = Calendar.current.dateComponents([.hour, .minute], from: reminder.time)
+                let content = UNMutableNotificationContent()
+                content.title = "Time to feed \(puppyName)"
+                content.body = "\(reminder.title) reminder for \(puppyName)."
+                content.sound = .default
+
+                let trigger = UNCalendarNotificationTrigger(dateMatching: components, repeats: true)
+                let request = UNNotificationRequest(identifier: reminder.identifier, content: content, trigger: trigger)
+                center.add(request)
+            }
+        }
+    }
+
+    private static func defaultMealTime(hour: Int, minute: Int) -> Date {
+        Calendar.current.date(from: DateComponents(hour: hour, minute: minute)) ?? Date()
+    }
+}
+
+private struct MealReminder {
+    let title: String
+    let enabled: Bool
+    let time: Date
+    let identifier: String
+}
+
+private struct MealSchedule {
+    let title: String
+    let enabled: Bool
+    let time: Date
 }
 
 struct SetupIconButtonStyle: ButtonStyle {
