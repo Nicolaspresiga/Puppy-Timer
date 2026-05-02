@@ -12,6 +12,7 @@ struct ContentView: View {
     @Environment(\.modelContext) private var modelContext
     @Query private var profiles: [PuppyProfile]
     @Query(sort: \PuppyEvent.timestamp, order: .reverse) private var events: [PuppyEvent]
+    @State private var animatedLogType: PuppyEventType?
 
     var body: some View {
         NavigationStack {
@@ -128,30 +129,44 @@ struct ContentView: View {
                     Button {
                         addEvent(type)
                     } label: {
-                        HStack(spacing: 10) {
-                            Image(systemName: type.systemImage)
-                                .font(.headline)
-                                .frame(width: 26, height: 26)
-
-                            Text(type.title)
-                                .font(.headline)
-
-                            Spacer()
-                        }
-                        .padding(14)
-                        .frame(minHeight: 56)
-                        .foregroundStyle(AppPalette.primaryGreen)
-                        .background(buttonBackground(for: type))
-                        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 8, style: .continuous)
-                                .stroke(AppPalette.primaryGreen.opacity(0.08), lineWidth: 1)
-                        )
+                        quickLogButtonLabel(for: type)
                     }
                     .buttonStyle(QuickLogButtonStyle())
                 }
             }
         }
+    }
+
+    private func quickLogButtonLabel(for type: PuppyEventType) -> some View {
+        let isAnimating = animatedLogType == type
+
+        return HStack(spacing: 10) {
+            Image(systemName: type.systemImage)
+                .font(.headline)
+                .frame(width: 26, height: 26)
+                .scaleEffect(isAnimating ? 1.24 : 1)
+
+            Text(type.title)
+                .font(.headline)
+
+            Spacer()
+
+            Image(systemName: "checkmark.circle.fill")
+                .font(.headline)
+                .opacity(isAnimating ? 1 : 0)
+                .scaleEffect(isAnimating ? 1 : 0.4)
+        }
+        .padding(14)
+        .frame(minHeight: 56)
+        .foregroundStyle(AppPalette.primaryGreen)
+        .background(isAnimating ? AppPalette.primaryGreen.opacity(0.16) : buttonBackground(for: type))
+        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .stroke(AppPalette.primaryGreen.opacity(isAnimating ? 0.34 : 0.08), lineWidth: 1)
+        )
+        .scaleEffect(isAnimating ? 1.03 : 1)
+        .animation(.spring(response: 0.24, dampingFraction: 0.58), value: animatedLogType)
     }
 
     private var todaySummary: some View {
@@ -254,7 +269,16 @@ struct ContentView: View {
 
     private func addEvent(_ type: PuppyEventType) {
         withAnimation(.spring(response: 0.35, dampingFraction: 0.78)) {
+            animatedLogType = type
             modelContext.insert(PuppyEvent(type: type))
+        }
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.42) {
+            withAnimation(.spring(response: 0.3, dampingFraction: 0.82)) {
+                if animatedLogType == type {
+                    animatedLogType = nil
+                }
+            }
         }
     }
 
