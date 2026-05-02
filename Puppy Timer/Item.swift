@@ -9,6 +9,21 @@ import Foundation
 import SwiftData
 
 @Model
+final class PuppyProfile {
+    var name: String
+    var ageInMonths: Int
+    var color: String
+    var breed: String
+
+    init(name: String, ageInMonths: Int, color: String, breed: String) {
+        self.name = name
+        self.ageInMonths = ageInMonths
+        self.color = color
+        self.breed = breed
+    }
+}
+
+@Model
 final class PuppyEvent {
     var typeRawValue: String
     var timestamp: Date

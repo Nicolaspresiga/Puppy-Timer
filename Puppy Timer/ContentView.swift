@@ -10,35 +10,79 @@ import SwiftData
 
 struct ContentView: View {
     @Environment(\.modelContext) private var modelContext
+    @Query private var profiles: [PuppyProfile]
     @Query(sort: \PuppyEvent.timestamp, order: .reverse) private var events: [PuppyEvent]
 
     var body: some View {
         NavigationStack {
-            ScrollView {
-                VStack(alignment: .leading, spacing: 24) {
-                    header
-                    recommendationCard
-                    quickLogGrid
-                    todaySummary
-                    timeline
-                }
-                .padding(20)
+            if let profile = profiles.first {
+                dashboard(for: profile)
+                    .navigationTitle("Puppy Timer")
+                    .toolbar {
+                        NavigationLink {
+                            PuppyProfileForm(profile: profile)
+                        } label: {
+                            Label("Edit puppy", systemImage: "slider.horizontal.3")
+                        }
+                    }
+            } else {
+                PuppyProfileForm(profile: nil)
+                    .navigationTitle("Puppy Setup")
             }
-            .background(Color(.systemGroupedBackground))
-            .navigationTitle("Puppy Timer")
         }
     }
 
-    private var header: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("Luna's day")
-                .font(.largeTitle.bold())
+    private func dashboard(for profile: PuppyProfile) -> some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 24) {
+                header(for: profile)
+                recommendationCard
+                quickLogGrid
+                todaySummary
+                timeline
+            }
+            .padding(20)
+        }
+        .background(Color(.systemGroupedBackground))
+    }
+
+    private func header(for profile: PuppyProfile) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            VStack(alignment: .leading, spacing: 8) {
+                Text("\(profile.name)'s day")
+                    .font(.largeTitle.bold())
+
+                Text(profileSummary(for: profile))
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
 
             Text("Log what just happened. Puppy Timer will suggest what probably needs to happen next.")
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
         }
+    }
+
+    private func profileSummary(for profile: PuppyProfile) -> String {
+        var details: [String] = []
+
+        if profile.ageInMonths == 1 {
+            details.append("1 month old")
+        } else {
+            details.append("\(profile.ageInMonths) months old")
+        }
+
+        if !profile.color.isEmpty {
+            details.append(profile.color)
+        }
+
+        if !profile.breed.isEmpty {
+            details.append(profile.breed)
+        }
+
+        return details.joined(separator: " - ")
     }
 
     private var recommendationCard: some View {
@@ -294,7 +338,88 @@ struct ContentView: View {
     }
 }
 
+struct PuppyProfileForm: View {
+    @Environment(\.modelContext) private var modelContext
+    @Environment(\.dismiss) private var dismiss
+
+    let profile: PuppyProfile?
+
+    @State private var name: String
+    @State private var ageInMonths: Int
+    @State private var color: String
+    @State private var breed: String
+
+    init(profile: PuppyProfile?) {
+        self.profile = profile
+        _name = State(initialValue: profile?.name ?? "")
+        _ageInMonths = State(initialValue: profile?.ageInMonths ?? 2)
+        _color = State(initialValue: profile?.color ?? "")
+        _breed = State(initialValue: profile?.breed ?? "")
+    }
+
+    var body: some View {
+        Form {
+            Section {
+                TextField("Name", text: $name)
+                    .textContentType(.name)
+
+                Stepper(value: $ageInMonths, in: 1...24) {
+                    Text(ageLabel)
+                }
+
+                TextField("Color", text: $color)
+                TextField("Breed", text: $breed)
+            } header: {
+                Text("Puppy")
+            }
+
+            Section {
+                Button(action: saveProfile) {
+                    Label(profile == nil ? "Start Puppy Timer" : "Save Changes", systemImage: "checkmark.circle.fill")
+                        .frame(maxWidth: .infinity)
+                }
+                .disabled(trimmedName.isEmpty)
+            }
+        }
+        .scrollContentBackground(.hidden)
+        .background(Color(.systemGroupedBackground))
+    }
+
+    private var ageLabel: String {
+        if ageInMonths == 1 {
+            return "Age: 1 month"
+        }
+
+        return "Age: \(ageInMonths) months"
+    }
+
+    private var trimmedName: String {
+        name.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private var trimmedColor: String {
+        color.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private var trimmedBreed: String {
+        breed.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private func saveProfile() {
+        if let profile {
+            profile.name = trimmedName
+            profile.ageInMonths = ageInMonths
+            profile.color = trimmedColor
+            profile.breed = trimmedBreed
+        } else {
+            modelContext.insert(PuppyProfile(name: trimmedName, ageInMonths: ageInMonths, color: trimmedColor, breed: trimmedBreed))
+        }
+
+        dismiss()
+    }
+}
+
 #Preview {
     ContentView()
-        .modelContainer(for: PuppyEvent.self, inMemory: true)
+        .modelContainer(for: [PuppyProfile.self, PuppyEvent.self], inMemory: true)
 }

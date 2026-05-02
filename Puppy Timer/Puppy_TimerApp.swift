@@ -12,6 +12,7 @@ import SwiftData
 struct Puppy_TimerApp: App {
     var sharedModelContainer: ModelContainer = {
         let schema = Schema([
+            PuppyProfile.self,
             PuppyEvent.self,
         ])
         let modelConfiguration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: false)
