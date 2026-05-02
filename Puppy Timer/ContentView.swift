@@ -536,6 +536,7 @@ struct QuickLogButtonStyle: ButtonStyle {
 struct PuppyProfileForm: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(\.dismiss) private var dismiss
+    @FocusState private var focusedField: SetupField?
 
     let profile: PuppyProfile?
     private let colorOptions = ["Black", "Brown", "Gray", "Cream", "White", "Golden"]
@@ -570,6 +571,15 @@ struct PuppyProfileForm: View {
         }
         .background(AppPalette.background)
         .tint(AppPalette.primaryGreen)
+        .toolbar {
+            ToolbarItemGroup(placement: .keyboard) {
+                Spacer()
+
+                Button("Done") {
+                    focusedField = nil
+                }
+            }
+        }
     }
 
     private var profilePreview: some View {
@@ -609,12 +619,8 @@ struct PuppyProfileForm: View {
 
     private var nameSection: some View {
         setupSection(title: "Name", systemImage: "pencil") {
-            TextField("Ares", text: $name)
+            setupTextField(placeholder: "Ares", text: $name, field: .name)
                 .textContentType(.name)
-                .font(.title3.weight(.semibold))
-                .padding(14)
-                .background(AppPalette.softGreen)
-                .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
         }
     }
 
@@ -676,11 +682,7 @@ struct PuppyProfileForm: View {
     private var breedSection: some View {
         setupSection(title: "Breed", systemImage: "tag.fill") {
             VStack(alignment: .leading, spacing: 12) {
-                TextField("French Bulldog", text: $breed)
-                    .font(.title3.weight(.semibold))
-                    .padding(14)
-                    .background(AppPalette.softGreen)
-                    .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                setupTextField(placeholder: "French Bulldog", text: $breed, field: .breed)
 
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 8) {
@@ -729,6 +731,30 @@ struct PuppyProfileForm: View {
         .padding(16)
         .background(AppPalette.card)
         .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+    }
+
+    private func setupTextField(placeholder: String, text: Binding<String>, field: SetupField) -> some View {
+        TextField("", text: text, prompt: Text(placeholder).foregroundStyle(.secondary))
+            .focused($focusedField, equals: field)
+            .textInputAutocapitalization(.words)
+            .autocorrectionDisabled()
+            .submitLabel(.done)
+            .font(.title3.weight(.semibold))
+            .padding(14)
+            .frame(minHeight: 54)
+            .background(AppPalette.softGreen)
+            .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .stroke(focusedField == field ? AppPalette.primaryGreen : AppPalette.primaryGreen.opacity(0.08), lineWidth: focusedField == field ? 2 : 1)
+            )
+            .contentShape(Rectangle())
+            .onTapGesture {
+                focusedField = field
+            }
+            .onSubmit {
+                focusedField = nil
+            }
     }
 
     private func colorOptionLabel(_ option: String) -> some View {
@@ -856,6 +882,11 @@ struct PrimarySetupButtonStyle: ButtonStyle {
             .opacity(configuration.isPressed ? 0.86 : 1)
             .animation(.spring(response: 0.22, dampingFraction: 0.72), value: configuration.isPressed)
     }
+}
+
+private enum SetupField {
+    case name
+    case breed
 }
 
 #Preview {
