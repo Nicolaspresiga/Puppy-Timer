@@ -38,7 +38,7 @@ struct ContentView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 24) {
                 header(for: profile)
-                recommendationCard
+                recommendationCard(for: profile)
                 quickLogGrid
                 todaySummary
                 timeline
@@ -91,18 +91,18 @@ struct ContentView: View {
         return details.joined(separator: " - ")
     }
 
-    private var recommendationCard: some View {
+    private func recommendationCard(for profile: PuppyProfile) -> some View {
         VStack(alignment: .leading, spacing: 18) {
             Label("Next potty window", systemImage: "timer")
                 .font(.headline)
                 .foregroundStyle(AppPalette.primaryGreen.opacity(0.72))
 
             VStack(alignment: .leading, spacing: 6) {
-                Text(nextPottyTitle)
+                Text(nextPottyTitle(for: profile))
                     .font(.system(size: 34, weight: .bold, design: .rounded))
                     .foregroundStyle(AppPalette.primaryGreen)
 
-                Text(nextPottyReason)
+                Text(nextPottyReason(for: profile))
                     .font(.body)
                     .foregroundStyle(.secondary)
             }
@@ -230,12 +230,12 @@ struct ContentView: View {
         events.filter { Calendar.current.isDateInToday($0.timestamp) }
     }
 
-    private var nextPottyTitle: String {
+    private func nextPottyTitle(for profile: PuppyProfile) -> String {
         guard let latest = events.first else {
             return "Start with a log"
         }
 
-        let target = suggestedPottyDate(after: latest)
+        let target = suggestedPottyDate(after: latest, profile: profile)
         if target <= Date() {
             return "Take out now"
         }
@@ -244,24 +244,26 @@ struct ContentView: View {
         return "In \(minutes) min"
     }
 
-    private var nextPottyReason: String {
+    private func nextPottyReason(for profile: PuppyProfile) -> String {
         guard let latest = events.first else {
-            return "Log a wake-up, meal, water, play, pee, or poop to start the first potty timer."
+            return "Log a wake-up, meal, water, play, pee, or poop to start \(profile.name)'s first potty timer."
         }
+
+        let ageNote = pottyAgeNote(for: profile)
 
         switch latest.type {
         case .wake:
-            return "Puppies usually need to go right after waking up."
+            return "Puppies usually need to go right after waking up. \(ageNote)"
         case .meal:
-            return "Meal logged. A potty break is often useful soon after eating."
+            return "Meal logged. A potty break is often useful soon after eating. \(ageNote)"
         case .water:
-            return "Water logged. Watch for a potty window soon."
+            return "Water logged. Watch for a potty window soon. \(ageNote)"
         case .play:
-            return "Play can trigger a potty need, especially with young puppies."
+            return "Play can trigger a potty need, especially with young puppies. \(ageNote)"
         case .accident:
-            return "Accident logged. The next reminder window is shortened."
+            return "Accident logged. The next reminder window is shortened for \(profile.name)."
         case .pee, .poop:
-            return "Potty logged. The next check is based on a short awake interval."
+            return "Potty logged. The next check is based on \(profile.name)'s age."
         case .nap:
             return "Nap logged. The important timer starts when your puppy wakes."
         }
@@ -282,27 +284,51 @@ struct ContentView: View {
         }
     }
 
-    private func suggestedPottyDate(after event: PuppyEvent) -> Date {
+    private func suggestedPottyDate(after event: PuppyEvent, profile: PuppyProfile) -> Date {
         let minutes: Int
 
         switch event.type {
         case .wake:
             minutes = 5
         case .meal:
-            minutes = 15
+            minutes = ageAdjustedMinutes(for: profile, young: 10, middle: 15, older: 25)
         case .water:
-            minutes = 20
+            minutes = ageAdjustedMinutes(for: profile, young: 15, middle: 20, older: 30)
         case .play:
-            minutes = 10
+            minutes = ageAdjustedMinutes(for: profile, young: 8, middle: 12, older: 20)
         case .accident:
-            minutes = 20
+            minutes = ageAdjustedMinutes(for: profile, young: 15, middle: 20, older: 30)
         case .pee, .poop:
-            minutes = 45
+            minutes = ageAdjustedMinutes(for: profile, young: 35, middle: 55, older: 90)
         case .nap:
-            minutes = 90
+            minutes = ageAdjustedMinutes(for: profile, young: 45, middle: 75, older: 120)
         }
 
         return Calendar.current.date(byAdding: .minute, value: minutes, to: event.timestamp) ?? event.timestamp
+    }
+
+    private func ageAdjustedMinutes(for profile: PuppyProfile, young: Int, middle: Int, older: Int) -> Int {
+        if profile.ageInMonths <= 2 {
+            return young
+        }
+
+        if profile.ageInMonths <= 4 {
+            return middle
+        }
+
+        return older
+    }
+
+    private func pottyAgeNote(for profile: PuppyProfile) -> String {
+        if profile.ageInMonths <= 2 {
+            return "At this age, keep the window short."
+        }
+
+        if profile.ageInMonths <= 4 {
+            return "The timer uses a medium puppy window."
+        }
+
+        return "Older puppies can usually wait a bit longer."
     }
 
     private func lastEventTile(title: String, type: PuppyEventType) -> some View {
