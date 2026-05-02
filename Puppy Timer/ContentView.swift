@@ -21,10 +21,18 @@ struct ContentView: View {
                 dashboard(for: profile)
                     .navigationTitle("Puppy Timer")
                     .toolbar {
-                        NavigationLink {
-                            PuppyProfileForm(profile: profile)
-                        } label: {
-                            Label("Edit puppy", systemImage: "slider.horizontal.3")
+                        ToolbarItemGroup(placement: .navigationBarTrailing) {
+                            NavigationLink {
+                                HistoryView()
+                            } label: {
+                                Label("History", systemImage: "clock.arrow.circlepath")
+                            }
+
+                            NavigationLink {
+                                PuppyProfileForm(profile: profile)
+                            } label: {
+                                Label("Edit puppy", systemImage: "slider.horizontal.3")
+                            }
                         }
                     }
             } else {
@@ -501,6 +509,130 @@ struct ContentView: View {
         case .play:
             AppPalette.fresh
         }
+    }
+}
+
+struct HistoryView: View {
+    @Query(sort: \PuppyEvent.timestamp, order: .reverse) private var events: [PuppyEvent]
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 20) {
+                historySummary
+
+                if events.isEmpty {
+                    ContentUnavailableView(
+                        "No history yet",
+                        systemImage: "clock.arrow.circlepath",
+                        description: Text("Logs will appear here after you use the quick log buttons.")
+                    )
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 34)
+                    .background(AppPalette.card)
+                    .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                } else {
+                    ForEach(groupedEvents, id: \.day) { group in
+                        daySection(day: group.day, events: group.events)
+                    }
+                }
+            }
+            .padding(.horizontal, 20)
+            .padding(.top, 20)
+            .padding(.bottom, 80)
+        }
+        .background(AppPalette.background)
+        .navigationTitle("History")
+        .navigationBarTitleDisplayMode(.large)
+    }
+
+    private var historySummary: some View {
+        HStack(spacing: 12) {
+            historyMetric(title: "Total logs", value: "\(events.count)")
+            historyMetric(title: "Accidents", value: "\(events.filter { $0.type == .accident }.count)")
+            historyMetric(title: "Potty", value: "\(events.filter { $0.type == .pee || $0.type == .poop }.count)")
+        }
+    }
+
+    private var groupedEvents: [(day: Date, events: [PuppyEvent])] {
+        let calendar = Calendar.current
+        let grouped = Dictionary(grouping: events) { event in
+            calendar.startOfDay(for: event.timestamp)
+        }
+
+        return grouped.keys.sorted(by: >).map { day in
+            let dayEvents = grouped[day]?.sorted { $0.timestamp > $1.timestamp } ?? []
+            return (day: day, events: dayEvents)
+        }
+    }
+
+    private func daySection(day: Date, events: [PuppyEvent]) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Text(day, format: .dateTime.weekday(.wide).month(.abbreviated).day())
+                    .font(.headline)
+                    .foregroundStyle(AppPalette.primaryGreen)
+
+                Spacer()
+
+                Text("\(events.count) logs")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+            }
+
+            VStack(spacing: 0) {
+                ForEach(events) { event in
+                    historyRow(for: event)
+
+                    if event.id != events.last?.id {
+                        Divider()
+                    }
+                }
+            }
+            .padding(.horizontal, 16)
+            .background(AppPalette.card)
+            .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+        }
+    }
+
+    private func historyRow(for event: PuppyEvent) -> some View {
+        HStack(spacing: 12) {
+            Image(systemName: event.type.systemImage)
+                .font(.headline)
+                .foregroundStyle(AppPalette.primaryGreen)
+                .frame(width: 30, height: 30)
+                .background(AppPalette.softGreen)
+                .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(event.type.title)
+                    .font(.headline)
+
+                Text(event.timestamp, format: .dateTime.hour().minute())
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+            }
+
+            Spacer()
+        }
+        .padding(.vertical, 12)
+    }
+
+    private func historyMetric(title: String, value: String) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(value)
+                .font(.title2.bold())
+                .foregroundStyle(AppPalette.primaryGreen)
+
+            Text(title)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+                .minimumScaleFactor(0.8)
+        }
+        .padding(14)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(AppPalette.card)
+        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
     }
 }
 
