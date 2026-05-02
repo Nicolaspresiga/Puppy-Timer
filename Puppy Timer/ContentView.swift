@@ -41,9 +41,12 @@ struct ContentView: View {
                 todaySummary
                 timeline
             }
-            .padding(20)
+            .padding(.horizontal, 20)
+            .padding(.top, 20)
+            .padding(.bottom, 110)
         }
         .background(Color(.systemGroupedBackground))
+        .scrollIndicators(.visible)
     }
 
     private func header(for profile: PuppyProfile) -> some View {
@@ -137,7 +140,7 @@ struct ContentView: View {
                         .background(color(for: type).opacity(0.14))
                         .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(QuickLogButtonStyle())
                 }
             }
         }
@@ -241,7 +244,7 @@ struct ContentView: View {
     }
 
     private func addEvent(_ type: PuppyEventType) {
-        withAnimation {
+        withAnimation(.spring(response: 0.35, dampingFraction: 0.78)) {
             modelContext.insert(PuppyEvent(type: type))
         }
     }
@@ -335,6 +338,20 @@ struct ContentView: View {
         case "green": .green
         default: .accentColor
         }
+    }
+}
+
+struct QuickLogButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .scaleEffect(configuration.isPressed ? 0.94 : 1)
+            .opacity(configuration.isPressed ? 0.72 : 1)
+            .shadow(
+                color: .black.opacity(configuration.isPressed ? 0.03 : 0),
+                radius: configuration.isPressed ? 2 : 0,
+                y: configuration.isPressed ? 1 : 0
+            )
+            .animation(.spring(response: 0.22, dampingFraction: 0.72), value: configuration.isPressed)
     }
 }
 
